@@ -7,12 +7,15 @@
 
     :copyright: (c) 2015 by Shipeng Feng.
     :license: BSD, see LICENSE for more details.
+    
+    Remove PIL dependency and run in Processing with Python2 by Doug Goodwin
+    Changed version to '0.3.1'
 """
-__version__ = '0.2.1'
+__version__ = '0.3.1'
 
 import math
 
-from PIL import Image
+# from PIL import Image
 
 
 class cached_property(object):
@@ -36,7 +39,8 @@ class ColorThief(object):
                      must implement `read()`, `seek()`, and `tell()` methods,
                      and be opened in binary mode.
         """
-        self.image = Image.open(file)
+        # self.image = Image.open(file)
+        self.image = loadImage(file)
 
     def get_color(self, quality=10):
         """Get the dominant color.
@@ -50,7 +54,7 @@ class ColorThief(object):
         palette = self.get_palette(5, quality)
         return palette[0]
 
-    def get_palette(self, color_count=10, quality=10):
+    def get_palette(self, color_count=10, quality=100):
         """Build a color palette.  We are using the median cut algorithm to
         cluster similar colors.
 
@@ -60,21 +64,45 @@ class ColorThief(object):
                         greater the likelihood that colors will be missed.
         :return list: a list of tuple in the form (r, g, b)
         """
-        image = self.image.convert('RGBA')
-        width, height = image.size
-        pixels = image.getdata()
+        # image = self.image.convert('RGBA')
+        img = self.image
+        width, height = img.width, img.height
+        # pxls = image.getdata()
         pixel_count = width * height
-        valid_pixels = []
-        for i in range(0, pixel_count, quality):
-            r, g, b, a = pixels[i]
-            # If pixel is mostly opaque and not white
-            if a >= 125:
-                if not (r > 250 and g > 250 and b > 250):
-                    valid_pixels.append((r, g, b))
+        valid_pxls = []
+        # for i in range(0, pixel_count, quality):
+        #     r, g, b, a = pxls[i]
+        #     # If pixel is mostly opaque and not white
+        #     if a >= 125:
+        #         if not (r > 250 and g > 250 and b > 250):
+        #             valid_pxls.append((r, g, b))
+        img.loadPixels()
+        r = 0
+        g = 0
+        b = 0
+        for i in range(0,len(img.pixels),quality):
+            c = img.pixels[i];
+            r += c>>16 & 0xFF;
+            g += c>>8 & 0xFF;
+            b += c & 0xFF;
+            
+            R = int(red(c))
+            G = int(green(c))
+            B = int(blue(c))
+            
+            # print(R,G,B)
+            valid_pxls.append((R,G,B))
+    
+        r /= len(img.pixels)
+        g /= len(img.pixels)
+        b /= len(img.pixels)
+        # print(r, g, b)
+
+        # return r, g, b
 
         # Send array to quantize function which clusters values
         # using median cut algorithm
-        cmap = MMCQ.quantize(valid_pixels, color_count)
+        cmap = MMCQ.quantize(valid_pxls, color_count)
         return cmap.palette
 
 
@@ -93,12 +121,13 @@ class MMCQ(object):
         return (r << (2 * MMCQ.SIGBITS)) + (g << MMCQ.SIGBITS) + b
 
     @staticmethod
-    def get_histo(pixels):
-        """histo (1-d array, giving the number of pixels in each quantized
+    def get_histo(pxls):
+        # print(pxls[0])
+        """histo (1-d array, giving the number of pxls in each quantized
         region of color space)
         """
         histo = dict()
-        for pixel in pixels:
+        for pixel in pxls:
             rval = pixel[0] >> MMCQ.RSHIFT
             gval = pixel[1] >> MMCQ.RSHIFT
             bval = pixel[2] >> MMCQ.RSHIFT
@@ -107,14 +136,14 @@ class MMCQ(object):
         return histo
 
     @staticmethod
-    def vbox_from_pixels(pixels, histo):
+    def vbox_from_pxls(pxls, histo):
         rmin = 1000000
         rmax = 0
         gmin = 1000000
         gmax = 0
         bmin = 1000000
         bmax = 0
-        for pixel in pixels:
+        for pixel in pxls:
             rval = pixel[0] >> MMCQ.RSHIFT
             gval = pixel[1] >> MMCQ.RSHIFT
             bval = pixel[2] >> MMCQ.RSHIFT
@@ -206,18 +235,18 @@ class MMCQ(object):
         return (None, None)
 
     @staticmethod
-    def quantize(pixels, max_color):
+    def quantize(pxls, max_color):
         """Quantize.
 
-        :param pixels: a list of pixel in the form (r, g, b)
+        :param pxls: a list of pixel in the form (r, g, b)
         :param max_color: max number of colors
         """
-        if not pixels:
-            raise Exception('Empty pixels when quantize.')
+        if not pxls:
+            raise Exception('Empty pxls when quantize.')
         if max_color < 2 or max_color > 256:
             raise Exception('Wrong number of max colors when quantize.')
 
-        histo = MMCQ.get_histo(pixels)
+        histo = MMCQ.get_histo(pxls)
 
         # check that we aren't below maxcolors already
         if len(histo) <= max_color:
@@ -225,7 +254,7 @@ class MMCQ(object):
             pass
 
         # get the beginning vbox from the colors
-        vbox = MMCQ.vbox_from_pixels(pixels, histo)
+        vbox = MMCQ.vbox_from_pxls(pxls, histo)
         pq = PQueue(lambda x: x.count)
         pq.push(vbox)
 
